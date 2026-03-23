@@ -39,6 +39,16 @@ if (typeof window !== 'undefined') {
   window.addEventListener('error', preventExtensionErrors, true);
   window.addEventListener('unhandledrejection', preventExtensionErrors, true);
 
+  window.onerror = function(message, source, lineno, colno, error) {
+    if (
+      (message && typeof message === 'string' && (message.includes('chrome-extension') || message.includes('onMessage'))) ||
+      (source && typeof source === 'string' && source.includes('chrome-extension'))
+    ) {
+      return true; 
+    }
+    return false;
+  };
+
   const originalConsoleError = console.error;
   console.error = (...args) => {
     if (args.some(arg => typeof arg === 'string' && (arg.includes('chrome-extension') || arg.includes('onMessage')))) {
@@ -711,8 +721,25 @@ const GrowthCurveChart = ({ metric, sex, patientAge, patientValue, title }) => {
 
 class ErrorBoundary extends React.Component {
   constructor(props) { super(props); this.state = { hasError: false }; }
-  static getDerivedStateFromError() { return { hasError: true }; }
-  render() { if (this.state.hasError) return <div className="p-10 text-center font-bold">Error de navegador. Por favor recarga.</div>; return this.props.children; }
+  
+  static getDerivedStateFromError(error) { 
+    if (error && error.message && (error.message.includes('onMessage') || error.message.includes('chrome-extension'))) {
+      return { hasError: false };
+    }
+    return { hasError: true }; 
+  }
+  
+  componentDidCatch(error, errorInfo) { 
+    if (error && error.message && (error.message.includes('onMessage') || error.message.includes('chrome-extension'))) {
+      return;
+    }
+    console.error("Error interceptado:", error, errorInfo); 
+  }
+  
+  render() { 
+    if (this.state.hasError) return <div className="p-10 text-center font-bold">Error de navegador. Por favor recarga.</div>; 
+    return this.props.children; 
+  }
 }
 
 function MainApp() {
@@ -779,7 +806,7 @@ function MainApp() {
     return `${minMg.toFixed(1)} - ${maxMg.toFixed(1)} mg`;
   };
 
-  const edadEnMeses = useMemo(() => { const e = parseFloat(edad); return isNaN(e) ? 0 : (unidadEdad === 'años' ? e * 12 : e); }, [edad, unidadEdad]);
+  const edadMeses = useMemo(() => { const e = parseFloat(edad); return isNaN(e) ? 0 : (unidadEdad === 'años' ? e * 12 : e); }, [edad, unidadEdad]);
 
   useEffect(() => { if (MEDICAMENTOS[grupo]) setMed(MEDICAMENTOS[grupo][0].nombre); }, [grupo]);
   useEffect(() => { 
@@ -799,22 +826,22 @@ function MainApp() {
   }, [peso, grupo, med, ruta]);
 
   const nutricion = useMemo(() => {
-    const p = parseFloat(peso), t = parseFloat(talla); if (isNaN(p) || isNaN(t) || t <= 0 || edadEnMeses <= 0) return null;
-    const imcVal = p / ((t/100)*(t/100)); const lmsB = interpolateLMS('bmi', sexo, edadEnMeses);
+    const p = parseFloat(peso), t = parseFloat(talla); if (isNaN(p) || isNaN(t) || t <= 0 || edadMeses <= 0) return null;
+    const imcVal = p / ((t/100)*(t/100)); const lmsB = interpolateLMS('bmi', sexo, edadMeses);
     const zB = calculateZ(imcVal, lmsB.l, lmsB.m, lmsB.s);
     let diag = zB > 2 ? "Obesidad" : zB > 1 ? "Sobrepeso" : zB < -2 ? "Desnutrición" : "Normopeso";
 
     let expectativas = "";
-    if (edadEnMeses <= 1) expectativas = "Neonato: Se espera ganancia ponderal de 20-30 g/día. Presencia de reflejos primitivos (Moro, búsqueda, succión).";
-    else if (edadEnMeses <= 6) expectativas = "Lactante (1-6m): Ganancia aprox. 600-800 g/mes y 2.5 cm/mes. Hitos: Sostén cefálico (3m), rodamientos (4-5m), inicia sedestación (6m).";
-    else if (edadEnMeses <= 12) expectativas = "Lactante (6-12m): Ganancia aprox. 400 g/mes. Hitos: Sedestación sin apoyo (7-8m), gateo (8-10m), bipedestación (11-12m). Pinza fina.";
-    else if (edadEnMeses <= 24) expectativas = "Lactante mayor (1-2a): Triplica el peso de nacimiento al año. Marcha independiente (12-15m). Une 2 palabras.";
-    else if (edadEnMeses <= 60) expectativas = "Preescolar (2-5a): Ganancia de 2 kg/año y 6-8 cm/año. Hitos: Control de esfínteres (2.5-3a), lenguaje estructurado (3a), salta en un pie (4a).";
-    else if (edadEnMeses <= 120) expectativas = "Escolar (5-10a): Ganancia constante de 3 kg/año y 5-6 cm/año. Caída de dientes temporales (6a). Desarrollo de pensamiento lógico-concreto.";
+    if (edadMeses <= 1) expectativas = "Neonato: Se espera ganancia ponderal de 20-30 g/día. Presencia de reflejos primitivos (Moro, búsqueda, succión).";
+    else if (edadMeses <= 6) expectativas = "Lactante (1-6m): Ganancia aprox. 600-800 g/mes y 2.5 cm/mes. Hitos: Sostén cefálico (3m), rodamientos (4-5m), inicia sedestación (6m).";
+    else if (edadMeses <= 12) expectativas = "Lactante (6-12m): Ganancia aprox. 400 g/mes. Hitos: Sedestación sin apoyo (7-8m), gateo (8-10m), bipedestación (11-12m). Pinza fina.";
+    else if (edadMeses <= 24) expectativas = "Lactante mayor (1-2a): Triplica el peso de nacimiento al año. Marcha independiente (12-15m). Une 2 palabras.";
+    else if (edadMeses <= 60) expectativas = "Preescolar (2-5a): Ganancia de 2 kg/año y 6-8 cm/año. Hitos: Control de esfínteres (2.5-3a), lenguaje estructurado (3a), salta en un pie (4a).";
+    else if (edadMeses <= 120) expectativas = "Escolar (5-10a): Ganancia constante de 3 kg/año y 5-6 cm/año. Caída de dientes temporales (6a). Desarrollo de pensamiento lógico-concreto.";
     else expectativas = "Adolescente (mayores a 10a): Estirón puberal. Desarrollo de caracteres sexuales secundarios (Tanner) y pensamiento abstracto. Riesgo de trastornos alimenticios.";
 
     return { imc: imcVal.toFixed(1), pB: zToP(zB), zB: zB.toFixed(2), diag, expectativas };
-  }, [peso, talla, edadEnMeses, sexo]);
+  }, [peso, talla, edadMeses, sexo]);
 
   const liquidos = useMemo(() => {
     const p = parseFloat(peso);
@@ -827,7 +854,7 @@ function MainApp() {
     const holliRate = holliTotal / 24;
 
     let defMultiplier = 0;
-    if (edadEnMeses < 60) {
+    if (edadMeses < 60) {
       if (gradoDeshidratacion === 'leve') defMultiplier = 50;
       else if (gradoDeshidratacion === 'moderada') defMultiplier = 100;
       else defMultiplier = 150;
@@ -857,7 +884,7 @@ function MainApp() {
       neoReq, neoTotal: Math.round(neoTotal), neoRate: neoRate.toFixed(1),
       boloChoque: Math.round(p * 20)
     };
-  }, [peso, edadEnMeses, gradoDeshidratacion, diaVida]);
+  }, [peso, edadMeses, gradoDeshidratacion, diaVida]);
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] pb-28 md:pb-8 font-sans selection:bg-blue-100">
@@ -1028,9 +1055,9 @@ function MainApp() {
                             <LineChartIcon className="text-violet-600 md:w-5 md:h-5" size={18} /> Curvas de Crecimiento OMS
                         </h4>
                         <div className="grid md:grid-cols-3 gap-4 md:gap-6">
-                            <GrowthCurveChart metric="weight" sex={sexo} patientAge={edadEnMeses} patientValue={parseFloat(peso)} title="Peso para la Edad" />
-                            <GrowthCurveChart metric="height" sex={sexo} patientAge={edadEnMeses} patientValue={parseFloat(talla)} title="Talla para la Edad" />
-                            <GrowthCurveChart metric="bmi" sex={sexo} patientAge={edadEnMeses} patientValue={parseFloat(nutricion.imc)} title="IMC para la Edad" />
+                            <GrowthCurveChart metric="weight" sex={sexo} patientAge={edadMeses} patientValue={parseFloat(peso)} title="Peso para la Edad" />
+                            <GrowthCurveChart metric="height" sex={sexo} patientAge={edadMeses} patientValue={parseFloat(talla)} title="Talla para la Edad" />
+                            <GrowthCurveChart metric="bmi" sex={sexo} patientAge={edadMeses} patientValue={parseFloat(nutricion.imc)} title="IMC para la Edad" />
                         </div>
                     </div>
                 </div>
