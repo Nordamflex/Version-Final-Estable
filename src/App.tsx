@@ -21,17 +21,35 @@ import {
 // SUPRESIÓN GLOBAL DE ERRORES DE EXTENSIONES DE CHROME
 // ======================================================
 if (typeof window !== 'undefined') {
-  window.addEventListener('error', (event) => {
-    if (event.filename?.includes('chrome-extension://') || event.message?.includes('chrome-extension')) {
-      event.preventDefault();
-      event.stopPropagation();
-      console.warn('Fallo de extensión de Chrome interceptado y suprimido por seguridad.');
+  const preventExtensionErrors = (event) => {
+    try {
+      const errorMsg = typeof event.message === 'string' ? event.message : (event.reason && typeof event.reason.message === 'string' ? event.reason.message : '');
+      const errorFile = typeof event.filename === 'string' ? event.filename : '';
+      
+      // Filtro específico para el error de 'onMessage' provocado por extensiones
+      if (errorMsg.includes('chrome-extension') || errorFile.includes('chrome-extension') || errorMsg.includes('onMessage')) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }
+    } catch (e) {
+      // Fallo silencioso
     }
-  }, true);
+  };
+  
+  window.addEventListener('error', preventExtensionErrors, true);
+  window.addEventListener('unhandledrejection', preventExtensionErrors, true);
+
+  const originalConsoleError = console.error;
+  console.error = (...args) => {
+    if (args.some(arg => typeof arg === 'string' && (arg.includes('chrome-extension') || arg.includes('onMessage')))) {
+      return;
+    }
+    originalConsoleError.apply(console, args);
+  };
 }
 
 // ======================================================
-// BASE DE DATOS MAESTRA - FARMACOLOGÍA PEDIÁTRICA
+// BASE DE DATOS MAESTRA - FARMACOLOGÍA
 // ======================================================
 const MEDICAMENTOS = {
   "Antiinfecciosos Sistémicos": [
@@ -40,7 +58,7 @@ const MEDICAMENTOS = {
       rutas: {
         "VO - Susp. 250mg/5ml": { min: 13.3, max: 16.6, maxD: 500, frec: "Cada 8 h", conc: 250, vol: 5, admin: "Agitar bien. Con alimentos.", nota: "Dosis estándar: 40-50 mg/kg/día.", efectos: "Diarrea leve, exantema." },
         "VO - Susp. 500mg/5ml": { min: 40, max: 45, maxD: 1000, frec: "Cada 12 h", conc: 500, vol: 5, admin: "Dosis alta para OMA.", nota: "80-90 mg/kg/día.", efectos: "Diarrea." },
-        "VO - Cápsula 500mg": { fija: "1 cápsula (500mg)", frec: "Cada 8 h", admin: "Con alimentos.", nota: "Niños > 40kg.", efectos: "Diarrea, malestar GI." }
+        "VO - Cápsula 500mg": { fija: "1 cápsula (500mg)", frec: "Cada 8 h", admin: "Con alimentos.", nota: "Niños mayores a 40kg.", efectos: "Diarrea, malestar GI." }
       }
     },
     {
@@ -54,6 +72,18 @@ const MEDICAMENTOS = {
       nombre: "Cefalexina (Keflex)", clase: "Cefalosporina 1ra Gen",
       rutas: {
         "VO - Susp. 250mg/5ml": { min: 6.25, max: 12.5, maxD: 1000, frec: "Cada 6 h", conc: 250, vol: 5, admin: "Independiente de alimentos.", nota: "Infección piel y tejidos blandos.", efectos: "Náuseas, vómito." }
+      }
+    },
+    {
+      nombre: "Cefuroxima (Zinnat, Cefuracet)", clase: "Cefalosporina 2da Gen",
+      rutas: {
+        "VO - Susp. 250mg/5ml": { min: 15, max: 15, maxD: 500, frec: "Cada 12 h", conc: 250, vol: 5, admin: "Administrar con alimentos para aumentar absorción.", nota: "Dosis diaria: 30 mg/kg/día.", efectos: "Trastornos GI, mal sabor." }
+      }
+    },
+    {
+      nombre: "Cefixima (Denvar)", clase: "Cefalosporina 3ra Gen",
+      rutas: {
+        "VO - Susp. 100mg/5ml": { min: 8, max: 8, maxD: 400, frec: "Cada 24 h (o div c/12h)", conc: 100, vol: 5, admin: "Independiente de las comidas.", nota: "Útil en IVU y Faringitis.", efectos: "Diarrea, dispepsia." }
       }
     },
     {
@@ -96,7 +126,7 @@ const MEDICAMENTOS = {
     {
       nombre: "Nitazoxanida (Daxon, Paramix)", clase: "Antiparasitario",
       rutas: {
-        "VO - Susp. 100mg/5ml": { min: 7.5, max: 7.5, maxD: 500, frec: "Cada 12 h", conc: 100, vol: 5, admin: "Dar con alimentos. Tratamiento exacto de 3 días.", nota: "Amplio espectro (Amebas/Giardia/Helmintos).", efectos: "Orina color verde-amarillento." }
+        "VO - Susp. 100mg/5ml": { min: 7.5, max: 7.5, maxD: 500, frec: "Cada 12 h", conc: 100, vol: 5, admin: "Dar con alimentos. Tratamiento exacto de 3 días.", nota: "Amplio espectro.", efectos: "Orina color verde-amarillento." }
       }
     },
     {
@@ -116,6 +146,13 @@ const MEDICAMENTOS = {
       rutas: {
         "VO - Susp. 50mg/5ml": { min: 3, max: 6, maxD: 400, frec: "Cada 24 h", conc: 50, vol: 5, admin: "Dosis de carga el primer día.", nota: "Candidiasis orofaríngea.", efectos: "Hepatotoxicidad leve." }
       }
+    },
+    {
+      nombre: "Oseltamivir (Tamiflu, Seltaferon)", clase: "Antiviral",
+      rutas: {
+        "VO - Susp. 12mg/ml": { min: 3, max: 3, maxD: 75, frec: "Cada 12 h", conc: 12, vol: 1, admin: "Administrar junto con alimentos para reducir vómito.", nota: "Dosis pediátrica: 3 mg/kg/dosis por 5 días.", efectos: "Náuseas, vómito." },
+        "VO - Cápsulas (30, 45, 75mg)": { fija: "Bandas: menores 15kg(30mg) | 15-23kg(45mg) | 23-40kg(60mg) | mayores 40kg(75mg)", frec: "Cada 12 h", admin: "Tomar con alimentos. Tratamiento de 5 días.", nota: "Ajuste estándar por peso.", efectos: "Náuseas transitorias." }
+      }
     }
   ],
   "Analgésicos y Antipiréticos": [
@@ -131,7 +168,7 @@ const MEDICAMENTOS = {
     {
       nombre: "Ibuprofeno (Motrin, Advil)", clase: "AINE",
       rutas: {
-        "VO - Susp. 100mg/5ml": { min: 5, max: 10, maxD: 400, frec: "Cada 6-8 h", conc: 100, vol: 5, admin: "Dar con leche o comida.", nota: "Evitar en < 6 meses.", efectos: "Gastritis leve." },
+        "VO - Susp. 100mg/5ml": { min: 5, max: 10, maxD: 400, frec: "Cada 6-8 h", conc: 100, vol: 5, admin: "Dar con leche o comida.", nota: "Evitar en menores de 6 meses.", efectos: "Gastritis leve." },
         "VO - Susp. 200mg/5ml (Forte)": { min: 5, max: 10, maxD: 400, frec: "Cada 6-8 h", conc: 200, vol: 5, admin: "Agitar bien. Concentración doble.", nota: "Ideal para escolares.", efectos: "Dolor estomacal." }
       }
     },
@@ -157,7 +194,7 @@ const MEDICAMENTOS = {
       nombre: "Metamizol (Neo-Melubrina)", clase: "Pirazolona",
       rutas: {
         "VO - Jarabe 250mg/5ml": { min: 10, max: 15, maxD: 500, frec: "Cada 8 h", conc: 250, vol: 5, admin: "Dar después de alimentos.", nota: "Fiebre refractaria.", efectos: "Hipotensión." },
-        "IM/IV - Amp. 1g/2ml": { min: 10, max: 20, maxD: 1000, frec: "Cada 8 h", admin: "IV MUY LENTO (>15min) diluido.", nota: "Peligro de choque rápido.", efectos: "Choque anafilactoide." }
+        "IM/IV - Amp. 1g/2ml": { min: 10, max: 20, maxD: 1000, frec: "Cada 8 h", admin: "IV MUY LENTO (mayor a 15min) diluido.", nota: "Peligro de choque rápido.", efectos: "Choque anafilactoide." }
       }
     }
   ],
@@ -205,7 +242,7 @@ const MEDICAMENTOS = {
     {
       nombre: "Dextrometorfano / Ambroxol (Histiacil NF)", clase: "Antitusígeno + Mucolítico",
       rutas: {
-        "VO - Jarabe (Infantil)": { fija: "2 a 5 años: 2.5ml | 6 a 12 años: 5ml", frec: "Cada 6-8 h", admin: "Vía Oral.", nota: "Uso exclusivo en tos irritativa con secreciones adherentes. Evitar en < 2 años.", efectos: "Náuseas, mareo leve." }
+        "VO - Jarabe (Infantil)": { fija: "2 a 5 años: 2.5ml | 6 a 12 años: 5ml", frec: "Cada 6-8 h", admin: "Vía Oral.", nota: "Uso exclusivo en tos irritativa con secreciones adherentes. Evitar en menores de 2 años.", efectos: "Náuseas, mareo leve." }
       }
     },
     {
@@ -221,7 +258,7 @@ const MEDICAMENTOS = {
       rutas: {
         "Inhalado - MDI 100mcg": { fija: "2 disparos (200mcg)", frec: "Cada 4-6 h", admin: "Usar aerocámara obligatoriamente.", nota: "Rescate asmático.", efectos: "Taquicardia, temblor." },
         "Nebulizado - 5mg/ml": { min: 0.15, max: 0.15, maxD: 5, frec: "Cada 4-6 h", admin: "Diluir en 3ml de Sol. Salina.", nota: "Crisis asmática en urgencias.", efectos: "Hipocalemia." },
-        "VO - Jarabe 2mg/5ml": { min: 0.1, max: 0.15, maxD: 4, frec: "Cada 8 h", conc: 2, vol: 5, admin: "Vía de segunda elección (menor eficacia, más efectos adversos).", nota: "Broncoespasmo leve.", efectos: "Taquicardia pronunciada." }
+        "VO - Jarabe 2mg/5ml": { min: 0.1, max: 0.15, maxD: 4, frec: "Cada 8 h", conc: 2, vol: 5, admin: "Vía de segunda elección.", nota: "Broncoespasmo leve.", efectos: "Taquicardia pronunciada." }
       }
     },
     {
@@ -233,14 +270,14 @@ const MEDICAMENTOS = {
     {
       nombre: "Montelukast (Singulair)", clase: "Antileucotrieno",
       rutas: {
-        "VO - Sobres 4mg (<5 años)": { fija: "1 sobre (4mg)", frec: "Cada 24 h", admin: "Mezclar con puré frío. Dar por la noche.", nota: "Prevención de asma.", efectos: "Alteraciones del sueño." },
+        "VO - Sobres 4mg (menores 5 años)": { fija: "1 sobre (4mg)", frec: "Cada 24 h", admin: "Mezclar con puré frío. Dar por la noche.", nota: "Prevención de asma.", efectos: "Alteraciones del sueño." },
         "VO - Tab Mast 5mg (6-14 años)": { fija: "1 tableta (5mg)", frec: "Cada 24 h", admin: "Masticar bien. Noche.", nota: "Asma moderado.", efectos: "Cefalea." }
       }
     },
     {
       nombre: "Loratadina (Laritol, Clarityne)", clase: "Antihistamínico 2da G",
       rutas: {
-        "VO - Jarabe 1mg/ml": { min: 0.2, max: 0.2, maxD: 10, frec: "Cada 24 h", conc: 1, vol: 1, admin: "Dosis <30kg: 5mg. >30kg: 10mg.", nota: "No causa sedación.", efectos: "Boca seca." }
+        "VO - Jarabe 1mg/ml": { min: 0.2, max: 0.2, maxD: 10, frec: "Cada 24 h", conc: 1, vol: 1, admin: "Dosis menores de 30kg: 5mg. Mayores de 30kg: 10mg.", nota: "No causa sedación.", efectos: "Boca seca." }
       }
     },
     {
@@ -264,7 +301,7 @@ const MEDICAMENTOS = {
     {
       nombre: "Dextrometorfano (Romilar, Athos)", clase: "Antitusígeno",
       rutas: {
-        "VO - Jarabe 15mg/5ml": { min: 1, max: 1.5, maxD: 60, frec: "Cada 6-8 h", conc: 15, vol: 5, admin: "Evitar en < 2 años. Solo tos seca.", nota: "Supresión de tos irritativa.", efectos: "Mareo, letargo." }
+        "VO - Jarabe 15mg/5ml": { min: 1, max: 1.5, maxD: 60, frec: "Cada 6-8 h", conc: 15, vol: 5, admin: "Evitar en menores de 2 años. Solo tos seca.", nota: "Supresión de tos irritativa.", efectos: "Mareo, letargo." }
       }
     }
   ],
@@ -277,9 +314,15 @@ const MEDICAMENTOS = {
       }
     },
     {
+      nombre: "Racecadotrilo (Hidrasec)", clase: "Inhibidor de Encefalinasa",
+      rutas: {
+        "VO - Sobres 10mg / 30mg": { min: 1.5, max: 1.5, maxD: 100, frec: "Cada 8 h", admin: "Añadir a comida o agua. Ingerir de inmediato.", nota: "Diarrea aguda secretora.", efectos: "Amigdalitis transitoria." }
+      }
+    },
+    {
       nombre: "Metoclopramida (Carnotprim, Plasil)", clase: "Procinético",
       rutas: {
-        "VO - Gotas 4mg/ml": { min: 0.1, max: 0.15, maxD: 10, frec: "Cada 8 h", conc: 4, vol: 1, admin: "30 min antes de comer.", nota: "Evitar en < 1 año.", efectos: "Síndrome extrapiramidal (tortícolis)." }
+        "VO - Gotas 4mg/ml": { min: 0.1, max: 0.15, maxD: 10, frec: "Cada 8 h", conc: 4, vol: 1, admin: "30 min antes de comer.", nota: "Evitar en menores de 1 año.", efectos: "Síndrome extrapiramidal." }
       }
     },
     {
@@ -350,7 +393,7 @@ const MEDICAMENTOS = {
     {
       nombre: "Colecalciferol Vit D3 (Valmetrol)", clase: "Vitamina",
       rutas: {
-        "VO - Gotas 400 UI": { fija: "1 gota (400 UI)", frec: "Cada 24 h", admin: "Directo o en leche.", nota: "Profilaxis raquitismo < 1 año.", efectos: "Seguro." }
+        "VO - Gotas 400 UI": { fija: "1 gota (400 UI)", frec: "Cada 24 h", admin: "Directo o en leche.", nota: "Profilaxis raquitismo en menores de 1 año.", efectos: "Seguro." }
       }
     },
     {
@@ -360,6 +403,162 @@ const MEDICAMENTOS = {
       }
     }
   ]
+};
+
+// ======================================================
+// GUÍAS CLÍNICAS POR PATOLOGÍA - APEGADAS A GPC MÉXICO (CENETEC)
+// ======================================================
+const GUIAS_CLINICAS = {
+  "Otitis Media Aguda (OMA)": {
+    icono: <EarIcon size={24} className="text-orange-500"/>,
+    color: "orange",
+    desc: "Infección bacteriana del oído medio. El tratamiento se recomienda en menores de 2 años, OMA bilateral, otorrea o fiebre mayor a 39°C. (GPC IMSS-496-11)",
+    duracion: "5 a 7 días (10 días en menores de 2 años).",
+    lineas: [
+      { titulo: "Instituto (IMSS/SSA) - 1ra Elección", grupo: "Antiinfecciosos Sistémicos", med: "Amoxicilina (Amoxil, Penamox)", ruta: "VO - Susp. 500mg/5ml", texto: "Dosis alta: 80 a 90 mg/kg/día divididos cada 12 horas.", frec: "Cada 12 h" },
+      { titulo: "Práctica Privada / Fracaso a 72h", grupo: "Antiinfecciosos Sistémicos", med: "Amoxicilina / Clavulanato (Augmentin, Clavulin)", ruta: "VO - Susp. 400/57mg (7:1)", texto: "Dosis alta: 90 mg/kg/día divididos cada 12 horas. (Cobertura H. influenzae y M. catarrhalis).", frec: "Cada 12 h" },
+      { titulo: "Alergia a Penicilina / Alternativa", grupo: "Antiinfecciosos Sistémicos", med: "Cefuroxima (Zinnat, Cefuracet)", ruta: "VO - Susp. 250mg/5ml", texto: "30 mg/kg/día divididos cada 12 horas.", frec: "Cada 12 h" }
+    ]
+  },
+  "Faringoamigdalitis Estreptocócica": {
+    icono: <ThermometerIcon size={24} className="text-rose-500"/>,
+    color: "rose",
+    desc: "Infección faríngea por S. pyogenes (EBHGA). Objetivo: erradicar portador y prevenir fiebre reumática. (GPC IMSS-073-08)",
+    duracion: "10 días estrictos (5 días si es Azitromicina).",
+    lineas: [
+      { titulo: "Instituto (IMSS/SSA) - 1ra Línea", grupo: "Antiinfecciosos Sistémicos", med: "Amoxicilina (Amoxil, Penamox)", ruta: "VO - Susp. 250mg/5ml", texto: "50 mg/kg/día divididos cada 8 o 12 horas. (Alternativa oral a la Penicilina G IM).", frec: "Cada 8-12 h" },
+      { titulo: "Práctica Privada / Recurrencia", grupo: "Antiinfecciosos Sistémicos", med: "Amoxicilina / Clavulanato (Augmentin, Clavulin)", ruta: "VO - Susp. 400/57mg (7:1)", texto: "40 a 50 mg/kg/día divididos cada 12 horas. Útil en fracaso terapéutico temprano.", frec: "Cada 12 h" },
+      { titulo: "Alergia Severa a Betalactámicos", grupo: "Antiinfecciosos Sistémicos", med: "Clindamicina (Dalacin C)", ruta: "VO - Susp. 75mg/5ml", texto: "20 a 30 mg/kg/día divididos cada 8 horas.", frec: "Cada 8 h" }
+    ]
+  },
+  "Rinosinusitis Bacteriana Aguda": {
+    icono: <ThermometerIcon size={24} className="text-teal-500"/>,
+    color: "teal",
+    desc: "Inflamación purulenta de senos paranasales mayor a 10-14 días o empeoramiento severo bifásico. (GPC IMSS-261-10)",
+    duracion: "10 a 14 días.",
+    lineas: [
+      { titulo: "Instituto (IMSS/SSA) - 1ra Línea", grupo: "Antiinfecciosos Sistémicos", med: "Amoxicilina (Amoxil, Penamox)", ruta: "VO - Susp. 500mg/5ml", texto: "45 a 90 mg/kg/día divididos cada 12 horas.", frec: "Cada 12 h" },
+      { titulo: "Práctica Privada / Riesgo Resistencia", grupo: "Antiinfecciosos Sistémicos", med: "Amoxicilina / Clavulanato (Augmentin, Clavulin)", ruta: "VO - Susp. 400/57mg (7:1)", texto: "Dosis alta: 90 mg/kg/día divididos cada 12 horas.", frec: "Cada 12 h" },
+      { titulo: "Alergia a Penicilina", grupo: "Antiinfecciosos Sistémicos", med: "Cefalexina (Keflex)", ruta: "VO - Susp. 250mg/5ml", texto: "50 mg/kg/día divididos cada 6 horas.", frec: "Cada 6 h" }
+    ]
+  },
+  "Neumonía Adquirida (NAC) Leve-Mod": {
+    icono: <WindIcon size={24} className="text-sky-500"/>,
+    color: "sky",
+    desc: "Neumonía comunitaria de manejo ambulatorio sin datos de dificultad respiratoria severa. (GPC SS-120-08)",
+    duracion: "7 a 10 días.",
+    lineas: [
+      { titulo: "Instituto (IMSS/SSA) - 1ra Línea", grupo: "Antiinfecciosos Sistémicos", med: "Amoxicilina (Amoxil, Penamox)", ruta: "VO - Susp. 500mg/5ml", texto: "Dosis alta: 90 mg/kg/día divididos cada 8 o 12 horas (Cobertura S. pneumoniae).", frec: "Cada 8-12 h" },
+      { titulo: "Privada / Patógenos Atípicos (mayores de 5a)", grupo: "Antiinfecciosos Sistémicos", med: "Claritromicina (Klaricid)", ruta: "VO - Susp. 250mg/5ml", texto: "15 mg/kg/día divididos cada 12 horas. (De elección en escolares).", frec: "Cada 12 h" },
+      { titulo: "Falla a Vía Oral / Urgencias", grupo: "Antiinfecciosos Sistémicos", med: "Ceftriaxona (Rocephin, Megion)", ruta: "IM - Amp. 500mg", texto: "75 mg/kg/día dosis única IM/IV. Revaluar a las 24 hrs.", frec: "Cada 24 h" }
+    ]
+  },
+  "Infección de Vías Urinarias (IVU)": {
+    icono: <DropletIcon size={24} className="text-yellow-500"/>,
+    color: "yellow",
+    desc: "Cistitis o infección urinaria baja no complicada. Idealmente adecuar a urocultivo posterior. (GPC IMSS-027-08)",
+    duracion: "7 a 10 días (14 días en menores de 2 años).",
+    lineas: [
+      { titulo: "Instituto (IMSS/SSA) - Empírico", grupo: "Antiinfecciosos Sistémicos", med: "TMP / SMX (Bactrim, Septrin)", ruta: "VO - Susp. 40/200mg/5ml", texto: "8 a 10 mg/kg/día (del componente TMP) divididos cada 12 horas. Si la resistencia local es baja.", frec: "Cada 12 h" },
+      { titulo: "Práctica Privada - 1ra Elección Alterna", grupo: "Antiinfecciosos Sistémicos", med: "Cefixima (Denvar)", ruta: "VO - Susp. 100mg/5ml", texto: "8 mg/kg/día en dosis única o dividida cada 12 horas (Cefalosporina oral de 3ra generación, ideal para IVU).", frec: "Cada 24 h" },
+      { titulo: "Sospecha Pielonefritis / Vómito", grupo: "Antiinfecciosos Sistémicos", med: "Ceftriaxona (Rocephin, Megion)", ruta: "IM - Amp. 500mg", texto: "50 a 75 mg/kg/día cada 24 horas. Iniciar IM en urgencias y derivar a hospitalización.", frec: "Cada 24 h" }
+    ]
+  },
+  "Gastroenteritis Aguda (GEPI)": {
+    icono: <ActivityIcon size={24} className="text-cyan-500"/>,
+    color: "cyan",
+    desc: "Manejo de soporte para GEPI viral. Prioridad: Hidratación oral (VSO). No se recomiendan antibióticos de rutina. (GPC IMSS-156-08)",
+    duracion: "Soporte sintomático por 1 a 3 días.",
+    lineas: [
+      { titulo: "Soporte Institucional / Fiebre", grupo: "Analgésicos y Antipiréticos", med: "Paracetamol (Tempra, Tylenol)", ruta: "VO - Jarabe 160mg/5ml", texto: "10 a 15 mg/kg/dosis cada 6 horas por razón necesaria.", frec: "Cada 6 h" },
+      { titulo: "Práctica Privada - Antiemético", grupo: "Antiácidos y Gastrointestinales", med: "Ondansetrón (Zofran)", ruta: "VO - Jarabe 4mg/5ml", texto: "0.15 mg/kg/dosis. Administrar 15-30 min antes del suero oral para tolerar hidratación.", frec: "Cada 8-12 h" },
+      { titulo: "Privada - Antisecretor (Opcional)", grupo: "Antiácidos y Gastrointestinales", med: "Racecadotrilo (Hidrasec)", ruta: "VO - Sobres 10mg / 30mg", texto: "1.5 mg/kg/dosis. Disminuye la hipersecreción de agua y electrolitos en el intestino.", frec: "Cada 8 h" }
+    ]
+  },
+  "Parasitosis Intestinal": {
+    icono: <AlertOctagonIcon size={24} className="text-fuchsia-500"/>,
+    color: "fuchsia",
+    desc: "Infección por protozoarios (E. histolytica, Giardia) o profilaxis helmíntica. (GPC SS-029-08)",
+    duracion: "Depende del agente (3 a 7 días).",
+    lineas: [
+      { titulo: "Instituto (IMSS/SSA) - Amebiasis", grupo: "Antiinfecciosos Sistémicos", med: "Metronidazol (Flagyl, Flagenase)", ruta: "VO - Susp. 250mg/5ml", texto: "30 a 50 mg/kg/día divididos cada 8 horas por 5 a 7 días.", frec: "Cada 8 h" },
+      { titulo: "Práctica Privada - Amplio Espectro", grupo: "Antiinfecciosos Sistémicos", med: "Nitazoxanida (Daxon, Paramix)", ruta: "VO - Susp. 100mg/5ml", texto: "7.5 mg/kg/dosis cada 12 horas por 3 días exactos.", frec: "Cada 12 h" },
+      { titulo: "Antihelmíntico / Ectoparásitos", grupo: "Antiinfecciosos Sistémicos", med: "Ivermectina (Ivexterm)", ruta: "VO - Tabs 6mg", texto: "200 mcg/kg en dosis única. Útil en piojos y sarna. Repetir en 14 días.", frec: "Dosis Única" }
+    ]
+  },
+  "Crisis Asmática Leve-Mod / Broncoespasmo": {
+    icono: <WindIcon size={24} className="text-indigo-500"/>,
+    color: "indigo",
+    desc: "Exacerbación asmática o bronquiolitis con sibilancias. (GPC IMSS-009-08 / GINA)",
+    duracion: "Rescate 1 hora + Corticoides por 3 a 5 días.",
+    lineas: [
+      { titulo: "1ra Línea (Terapia de Rescate)", grupo: "Respiratorios y Antialérgicos", med: "Salbutamol (Ventolin)", ruta: "Inhalado - MDI 100mcg", texto: "2 a 4 disparos con aerocámara cada 20 minutos por 1 hora. Posterior espaciar c/4-6h.", frec: "Rescate" },
+      { titulo: "Instituto (IMSS/SSA) - Corticoide", grupo: "Corticosteroides", med: "Prednisona (Meticorten)", ruta: "VO - Tabletas 5mg/50mg", texto: "1 a 2 mg/kg/día en dosis única matutina por 3 a 5 días.", frec: "Cada 24 h" },
+      { titulo: "Práctica Privada - Dosis Única", grupo: "Corticosteroides", med: "Dexametasona (Alin, Decadron)", ruta: "IM/VO - Crisis Crup/Asma", texto: "0.6 mg/kg en dosis única VO/IM (Alternativa para asegurar apego y evitar 5 días de prednisona).", frec: "Dosis Única" }
+    ]
+  },
+  "Enfermedad por Reflujo Gastroesofágico (ERGE)": {
+    icono: <DropletIcon size={24} className="text-lime-500"/>,
+    color: "lime",
+    desc: "Manejo farmacológico en lactantes o niños con síntomas persistentes tras falla a medidas conservadoras. (GPC IMSS-506-11)",
+    duracion: "4 a 8 semanas.",
+    lineas: [
+      { titulo: "Instituto (IMSS/SSA) - Elección", grupo: "Antiácidos y Gastrointestinales", med: "Omeprazol (Losec, Inhibitron)", ruta: "VO - Cáp 20mg", texto: "1 a 2 mg/kg/día por la mañana en ayuno estricto (30 min antes del desayuno).", frec: "Cada 24 h" },
+      { titulo: "Privada - Procinético (Coadyuvante)", grupo: "Antiácidos y Gastrointestinales", med: "Domperidona (Motilium)", ruta: "VO - Susp 1mg/ml", texto: "0.25 mg/kg/dosis administrado 15-30 minutos antes de los alimentos.", frec: "Cada 8 h" },
+      { titulo: "Procinético Alternativo", grupo: "Antiácidos y Gastrointestinales", med: "Metoclopramida (Carnotprim, Plasil)", ruta: "VO - Gotas 4mg/ml", texto: "0.1 a 0.15 mg/kg/dosis. Precaución por alto riesgo de síntomas extrapiramidales.", frec: "Cada 8 h" }
+    ]
+  },
+  "Estreñimiento Funcional Pediátrico": {
+    icono: <ActivityIcon size={24} className="text-amber-700"/>,
+    color: "amber",
+    desc: "Dificultad en la defecación. El tratamiento se basa en una fase de desimpactación y un mantenimiento prolongado. (GPC SS-366-10)",
+    duracion: "Mantenimiento mínimo de 2 a 6 meses.",
+    lineas: [
+      { titulo: "Privada - Mantenimiento (Osmótico)", grupo: "Antiácidos y Gastrointestinales", med: "Macrogol 3350 (Contumax, Movicol)", ruta: "VO - Sobres 6.9g (Ped)", texto: "0.5 a 1.0 g/kg/día diluido en agua. Titular hasta lograr 1-2 heces blandas diarias.", frec: "Cada 24 h" },
+      { titulo: "Instituto (IMSS) - Rescate Corto Plazo", grupo: "Antiácidos y Gastrointestinales", med: "Senósidos A y B (Senokot)", ruta: "VO - Jarabe", texto: "2.5 a 5 ml por la noche. Promueve la motilidad colónica. Uso máximo sugerido: 1 semana.", frec: "Cada 24 h" }
+    ]
+  },
+  "Urticaria Aguda / Alergia Cutánea": {
+    icono: <AlertTriangleIcon size={24} className="text-red-400"/>,
+    color: "red",
+    desc: "Reacción alérgica aguda mediada por histamina. Manejo enfocado en control del prurito intenso. (GPC IMSS-718-14)",
+    duracion: "5 a 7 días.",
+    lineas: [
+      { titulo: "Instituto (IMSS/SSA)", grupo: "Respiratorios y Antialérgicos", med: "Loratadina (Laritol, Clarityne)", ruta: "VO - Jarabe 1mg/ml", texto: "Antihistamínico de 2da generación. Dosis estándar según peso.", frec: "Cada 24 h" },
+      { titulo: "Práctica Privada (Menor sedación)", grupo: "Respiratorios y Antialérgicos", med: "Desloratadina (Aviant, Azomyr)", ruta: "VO - Jarabe 2.5mg/5ml", texto: "0.1 mg/kg/día por la mañana. Mayor perfil de seguridad.", frec: "Cada 24 h" },
+      { titulo: "Exacerbación Severa", grupo: "Corticosteroides", med: "Prednisolona (Fisopred)", ruta: "VO - Solución 1mg/ml o 3mg/ml", texto: "1 a 2 mg/kg/día por 3 a 5 días para control rápido de angioedema.", frec: "Cada 24 h" }
+    ]
+  },
+  "Síndrome Doloroso Abdominal / Cólico": {
+    icono: <ActivityIcon size={24} className="text-yellow-600"/>,
+    color: "yellow",
+    desc: "Dolor abdominal espasmódico sin datos de abdomen agudo quirúrgico. Manejo sintomático temporal. (Criterios Roma IV)",
+    duracion: "Soporte temporal (3 a 5 días).",
+    lineas: [
+      { titulo: "Instituto (IMSS/SSA)", grupo: "Antiácidos y Gastrointestinales", med: "Trimebutina (Libertrim Ped)", ruta: "VO - Susp. 0.6g/100ml", texto: "12 mg/kg/día divididos en 3 tomas antes de las comidas.", frec: "Cada 8 h" },
+      { titulo: "Privada (Cólico Severo)", grupo: "Antigripales y Combinados", med: "Butilhioscina / Paracetamol (Buscapina Compositum)", ruta: "VO - Gotas (Ped)", texto: "1 a 2 gotas por kg de peso corporal por dosis.", frec: "Cada 8 h" }
+    ]
+  },
+  "Candidiasis Sistémica / Orofaríngea Severa": {
+    icono: <AlertOctagonIcon size={24} className="text-fuchsia-600"/>,
+    color: "fuchsia",
+    desc: "Infección micótica resistente a terapia tópica o en casos de inmunosupresión. (GPC IMSS)",
+    duracion: "7 a 14 días.",
+    lineas: [
+      { titulo: "Antimicótico Sistémico", grupo: "Antiinfecciosos Sistémicos", med: "Fluconazol (Diflucan)", ruta: "VO - Susp. 50mg/5ml", texto: "Dosis de carga: 6 mg/kg el primer día. Mantenimiento: 3 mg/kg/día a partir del día 2.", frec: "Cada 24 h" }
+    ]
+  },
+  "Influenza Estacional / Pandémica": {
+    icono: <ThermometerIcon size={24} className="text-teal-500"/>,
+    color: "teal",
+    desc: "Infección respiratoria viral aguda. El tratamiento antiviral reduce complicaciones si se inicia idealmente en las primeras 48 horas. (GPC IMSS-319-10)",
+    duracion: "5 días exactos.",
+    lineas: [
+      { titulo: "Antiviral de Elección (Suspensión)", grupo: "Antiinfecciosos Sistémicos", med: "Oseltamivir (Tamiflu, Seltaferon)", ruta: "VO - Susp. 12mg/ml", texto: "3 mg/kg/dosis. Tratamiento estándar para lactantes y niños pequeños con dosis calculada al peso.", frec: "Cada 12 h" },
+      { titulo: "Antiviral (Cápsulas por Peso)", grupo: "Antiinfecciosos Sistémicos", med: "Oseltamivir (Tamiflu, Seltaferon)", ruta: "VO - Cápsulas (30, 45, 75mg)", texto: "Esquema por bandas de peso. Menores de 15kg: 30mg. De 15 a 23kg: 45mg. De 23 a 40kg: 60mg. Mayores a 40kg: 75mg.", frec: "Cada 12 h" },
+      { titulo: "Control Térmico (Alerta Reye)", grupo: "Analgésicos y Antipiréticos", med: "Paracetamol (Tempra, Tylenol)", ruta: "VO - Jarabe 160mg/5ml", texto: "10 a 15 mg/kg/dosis. CONTRAINDICADO el uso de Ácido Acetilsalicílico (Aspirina) por alto riesgo de Síndrome de Reye.", frec: "Cada 6 h" }
+    ]
+  }
 };
 
 // ======================================================
@@ -385,11 +584,11 @@ const TANNER_MUJERES = [
 ];
 
 const TANNER_HOMBRES = [
-  { grado: "I", genitales: "Preadolescente. Testículos, escroto y pene infantiles (<4ml).", vello: "Preadolescente. Sin vello púbico." },
+  { grado: "I", genitales: "Preadolescente. Testículos, escroto y pene infantiles (menor a 4ml).", vello: "Preadolescente. Sin vello púbico." },
   { grado: "II", genitales: "Agrandamiento de escroto y testículos (4-6ml). Piel escrotal enrojecida.", vello: "Escaso, largo, poco pigmentado en base del pene." },
   { grado: "III", genitales: "Agrandamiento del pene (longitud). Testículos continúan creciendo (8-10ml).", vello: "Más oscuro, comienza a rizarse, mayor cantidad." },
   { grado: "IV", genitales: "Aumento del grosor del pene. Escroto más oscuro. Testículos (10-15ml).", vello: "Parecido al adulto, sin extensión a los muslos." },
-  { grado: "V", genitales: "Genitales adultos en tamaño y forma. Testículos (>15ml).", vello: "Distribución adulta, extensión a cara interna de muslos." }
+  { grado: "V", genitales: "Genitales adultos en tamaño y forma. Testículos (mayor a 15ml).", vello: "Distribución adulta, extensión a cara interna de muslos." }
 ];
 
 // ======================================================
@@ -428,6 +627,88 @@ function zToP(z) {
     return Math.round(0.5*(1 + sign*erf)*100);
 }
 
+function calculateValueFromZ(z, l, m, s) {
+    if (l === 0) return m * Math.exp(z * s);
+    return m * Math.pow(1 + z * l * s, 1 / l);
+}
+
+// ======================================================
+// COMPONENTE DE CURVA DE CRECIMIENTO OMS (SVG)
+// ======================================================
+const GrowthCurveChart = ({ metric, sex, patientAge, patientValue, title }) => {
+    const safeAge = Math.min(Math.max(patientAge, 0), 120);
+    const isInfant = safeAge <= 36;
+    const minAge = isInfant ? 0 : 24;
+    const maxAge = isInfant ? 36 : 120;
+
+    const points = { z3: [], z2: [], z0: [], zm2: [], zm3: [] };
+    let minY = Infinity, maxY = -Infinity;
+
+    for (let m = minAge; m <= maxAge; m++) {
+        const lms = interpolateLMS(metric, sex, m);
+        const v3 = calculateValueFromZ(3, lms.l, lms.m, lms.s);
+        const v2 = calculateValueFromZ(2, lms.l, lms.m, lms.s);
+        const v0 = calculateValueFromZ(0, lms.l, lms.m, lms.s);
+        const vm2 = calculateValueFromZ(-2, lms.l, lms.m, lms.s);
+        const vm3 = calculateValueFromZ(-3, lms.l, lms.m, lms.s);
+
+        points.z3.push({x: m, y: v3});
+        points.z2.push({x: m, y: v2});
+        points.z0.push({x: m, y: v0});
+        points.zm2.push({x: m, y: vm2});
+        points.zm3.push({x: m, y: vm3});
+
+        maxY = Math.max(maxY, v3);
+        minY = Math.min(minY, vm3);
+    }
+
+    if (!isNaN(patientValue)) {
+        maxY = Math.max(maxY, patientValue) * 1.05;
+        minY = Math.min(minY, patientValue) * 0.95;
+    }
+    if (maxY === minY) { maxY += 1; minY -= 1; }
+
+    const w = 400, h = 220;
+    const getX = (m) => ((m - minAge) / (maxAge - minAge)) * (w - 40) + 10;
+    const getY = (v) => h - ((v - minY) / (maxY - minY)) * h;
+
+    const path = (pts) => pts.map(p => `${getX(p.x)},${getY(p.y)}`).join(' ');
+
+    return (
+        <div className="bg-white p-4 md:p-5 rounded-2xl border border-slate-200 shadow-sm relative w-full h-full flex flex-col justify-between">
+            <h5 className="text-[10px] md:text-xs font-black uppercase text-slate-500 tracking-widest mb-4 text-center">{title}</h5>
+            <svg viewBox={`0 0 ${w} ${h}`} className="w-full h-32 md:h-48 overflow-visible">
+                <polyline points={path(points.z3)} fill="none" stroke="#ef4444" strokeWidth="1.5" strokeDasharray="4"/>
+                <polyline points={path(points.z2)} fill="none" stroke="#f59e0b" strokeWidth="1.5"/>
+                <polyline points={path(points.z0)} fill="none" stroke="#10b981" strokeWidth="2.5"/>
+                <polyline points={path(points.zm2)} fill="none" stroke="#f59e0b" strokeWidth="1.5"/>
+                <polyline points={path(points.zm3)} fill="none" stroke="#ef4444" strokeWidth="1.5" strokeDasharray="4"/>
+
+                <text x={w-25} y={getY(points.z3[points.z3.length-1].y)} fontSize="11" fill="#ef4444" alignmentBaseline="middle" fontWeight="bold">+3</text>
+                <text x={w-25} y={getY(points.z2[points.z2.length-1].y)} fontSize="11" fill="#f59e0b" alignmentBaseline="middle" fontWeight="bold">+2</text>
+                <text x={w-25} y={getY(points.z0[points.z0.length-1].y)} fontSize="11" fill="#10b981" alignmentBaseline="middle" fontWeight="bold">0</text>
+                <text x={w-25} y={getY(points.zm2[points.zm2.length-1].y)} fontSize="11" fill="#f59e0b" alignmentBaseline="middle" fontWeight="bold">-2</text>
+                <text x={w-25} y={getY(points.zm3[points.zm3.length-1].y)} fontSize="11" fill="#ef4444" alignmentBaseline="middle" fontWeight="bold">-3</text>
+
+                {!isNaN(patientValue) && safeAge >= minAge && safeAge <= maxAge && (
+                    <>
+                        <line x1={getX(safeAge)} y1={h} x2={getX(safeAge)} y2={getY(patientValue)} stroke="#3b82f6" strokeWidth="1" strokeDasharray="3" opacity="0.5"/>
+                        <line x1={10} y1={getY(patientValue)} x2={getX(safeAge)} y2={getY(patientValue)} stroke="#3b82f6" strokeWidth="1" strokeDasharray="3" opacity="0.5"/>
+                        <circle cx={getX(safeAge)} cy={getY(patientValue)} r="6" fill="#3b82f6" stroke="#fff" strokeWidth="2">
+                           <animate attributeName="r" values="5;8;5" dur="1.5s" repeatCount="indefinite" />
+                        </circle>
+                    </>
+                )}
+            </svg>
+            <div className="mt-3 flex justify-between text-[8px] md:text-[9px] text-slate-400 font-bold uppercase tracking-widest">
+              <span>{minAge} Meses</span>
+              <span>OMS</span>
+              <span>{maxAge} Meses</span>
+            </div>
+        </div>
+    );
+};
+
 class ErrorBoundary extends React.Component {
   constructor(props) { super(props); this.state = { hasError: false }; }
   static getDerivedStateFromError() { return { hasError: true }; }
@@ -435,7 +716,8 @@ class ErrorBoundary extends React.Component {
 }
 
 function MainApp() {
-  const [vista, setVista] = useState("dosificacion");
+  const [vista, setVista] = useState("guias");
+  const [guiaActiva, setGuiaActiva] = useState("Otitis Media Aguda (OMA)");
   const [subVistaAdolescente, setSubVistaAdolescente] = useState("heeadsss");
   const [subVistaLiquidos, setSubVistaLiquidos] = useState("mantenimiento");
   const [gradoDeshidratacion, setGradoDeshidratacion] = useState("leve");
@@ -480,7 +762,24 @@ function MainApp() {
     return <PillIcon size={14} />;
   };
 
-  const edadMeses = useMemo(() => { const e = parseFloat(edad); return isNaN(e) ? 0 : (unidadEdad === 'años' ? e * 12 : e); }, [edad, unidadEdad]);
+  const getDosisParaGuia = (g, m, r) => {
+    const p = parseFloat(peso);
+    if (isNaN(p) || p <= 0) return null;
+    const currentMed = MEDICAMENTOS[g]?.find(item => item.nombre === m);
+    if (!currentMed || !currentMed.rutas || !currentMed.rutas[r]) return null;
+    const data = currentMed.rutas[r];
+    if (data.fija) return data.fija;
+    const minMg = Math.min(p * data.min, data.maxD);
+    const maxMg = Math.min(p * data.max, data.maxD);
+    if (data.conc && data.vol) {
+        const mlMin = (minMg / data.conc) * data.vol;
+        const mlMax = (maxMg / data.conc) * data.vol;
+        return mlMin === mlMax ? `${mlMin.toFixed(1)} ml` : `${mlMin.toFixed(1)} - ${mlMax.toFixed(1)} ml`;
+    }
+    return `${minMg.toFixed(1)} - ${maxMg.toFixed(1)} mg`;
+  };
+
+  const edadEnMeses = useMemo(() => { const e = parseFloat(edad); return isNaN(e) ? 0 : (unidadEdad === 'años' ? e * 12 : e); }, [edad, unidadEdad]);
 
   useEffect(() => { if (MEDICAMENTOS[grupo]) setMed(MEDICAMENTOS[grupo][0].nombre); }, [grupo]);
   useEffect(() => { 
@@ -500,37 +799,35 @@ function MainApp() {
   }, [peso, grupo, med, ruta]);
 
   const nutricion = useMemo(() => {
-    const p = parseFloat(peso), t = parseFloat(talla); if (isNaN(p) || isNaN(t) || t <= 0 || edadMeses <= 0) return null;
-    const imcVal = p / ((t/100)*(t/100)); const lmsB = interpolateLMS('bmi', sexo, edadMeses);
+    const p = parseFloat(peso), t = parseFloat(talla); if (isNaN(p) || isNaN(t) || t <= 0 || edadEnMeses <= 0) return null;
+    const imcVal = p / ((t/100)*(t/100)); const lmsB = interpolateLMS('bmi', sexo, edadEnMeses);
     const zB = calculateZ(imcVal, lmsB.l, lmsB.m, lmsB.s);
     let diag = zB > 2 ? "Obesidad" : zB > 1 ? "Sobrepeso" : zB < -2 ? "Desnutrición" : "Normopeso";
 
     let expectativas = "";
-    if (edadMeses <= 1) expectativas = "Neonato: Se espera ganancia ponderal de 20-30 g/día. Presencia de reflejos primitivos (Moro, búsqueda, succión).";
-    else if (edadMeses <= 6) expectativas = "Lactante (1-6m): Ganancia aprox. 600-800 g/mes y 2.5 cm/mes. Hitos: Sostén cefálico (3m), rodamientos (4-5m), inicia sedestación (6m).";
-    else if (edadMeses <= 12) expectativas = "Lactante (6-12m): Ganancia aprox. 400 g/mes. Hitos: Sedestación sin apoyo (7-8m), gateo (8-10m), bipedestación (11-12m). Pinza fina.";
-    else if (edadMeses <= 24) expectativas = "Lactante mayor (1-2a): Triplica el peso de nacimiento al año. Marcha independiente (12-15m). Une 2 palabras.";
-    else if (edadMeses <= 60) expectativas = "Preescolar (2-5a): Ganancia de 2 kg/año y 6-8 cm/año. Hitos: Control de esfínteres (2.5-3a), lenguaje estructurado (3a), salta en un pie (4a).";
-    else if (edadMeses <= 120) expectativas = "Escolar (5-10a): Ganancia constante de 3 kg/año y 5-6 cm/año. Caída de dientes temporales (6a). Desarrollo de pensamiento lógico-concreto.";
-    else expectativas = "Adolescente (>10a): Estirón puberal. Desarrollo de caracteres sexuales secundarios (Tanner) y pensamiento abstracto. Riesgo de trastornos alimenticios.";
+    if (edadEnMeses <= 1) expectativas = "Neonato: Se espera ganancia ponderal de 20-30 g/día. Presencia de reflejos primitivos (Moro, búsqueda, succión).";
+    else if (edadEnMeses <= 6) expectativas = "Lactante (1-6m): Ganancia aprox. 600-800 g/mes y 2.5 cm/mes. Hitos: Sostén cefálico (3m), rodamientos (4-5m), inicia sedestación (6m).";
+    else if (edadEnMeses <= 12) expectativas = "Lactante (6-12m): Ganancia aprox. 400 g/mes. Hitos: Sedestación sin apoyo (7-8m), gateo (8-10m), bipedestación (11-12m). Pinza fina.";
+    else if (edadEnMeses <= 24) expectativas = "Lactante mayor (1-2a): Triplica el peso de nacimiento al año. Marcha independiente (12-15m). Une 2 palabras.";
+    else if (edadEnMeses <= 60) expectativas = "Preescolar (2-5a): Ganancia de 2 kg/año y 6-8 cm/año. Hitos: Control de esfínteres (2.5-3a), lenguaje estructurado (3a), salta en un pie (4a).";
+    else if (edadEnMeses <= 120) expectativas = "Escolar (5-10a): Ganancia constante de 3 kg/año y 5-6 cm/año. Caída de dientes temporales (6a). Desarrollo de pensamiento lógico-concreto.";
+    else expectativas = "Adolescente (mayores a 10a): Estirón puberal. Desarrollo de caracteres sexuales secundarios (Tanner) y pensamiento abstracto. Riesgo de trastornos alimenticios.";
 
     return { imc: imcVal.toFixed(1), pB: zToP(zB), zB: zB.toFixed(2), diag, expectativas };
-  }, [peso, talla, edadMeses, sexo]);
+  }, [peso, talla, edadEnMeses, sexo]);
 
   const liquidos = useMemo(() => {
     const p = parseFloat(peso);
     if (isNaN(p) || p <= 0) return null;
 
-    // 1. Holliday-Segar (Mantenimiento)
     let holliTotal = 0;
     if (p <= 10) holliTotal = p * 100;
     else if (p <= 20) holliTotal = 1000 + ((p - 10) * 50);
     else holliTotal = 1500 + ((p - 20) * 20);
     const holliRate = holliTotal / 24;
 
-    // 2. Déficit por Deshidratación
     let defMultiplier = 0;
-    if (edadMeses < 60) {
+    if (edadEnMeses < 60) {
       if (gradoDeshidratacion === 'leve') defMultiplier = 50;
       else if (gradoDeshidratacion === 'moderada') defMultiplier = 100;
       else defMultiplier = 150;
@@ -544,39 +841,32 @@ function MainApp() {
     const rate8h = (rehidratacionTotal * 0.5) / 8;
     const rate16h = (rehidratacionTotal * 0.5) / 16;
 
-    // 3. Requerimientos Neonatales (IMSS - 1era semana)
     let neoReq = 0;
     const d = diaVida;
-    if (p < 1.0) {
-      neoReq = [80, 100, 120, 130, 140, 150, 160][d - 1];
-    } else if (p <= 1.5) {
-      neoReq = [80, 95, 110, 120, 130, 140, 150][d - 1];
-    } else {
-      neoReq = [60, 75, 90, 105, 120, 135, 150][d - 1];
-    }
+    if (p < 1.0) neoReq = [80, 100, 120, 130, 140, 150, 160][d - 1];
+    else if (p <= 1.5) neoReq = [80, 95, 110, 120, 130, 140, 150][d - 1];
+    else neoReq = [60, 75, 90, 105, 120, 135, 150][d - 1];
+    
     const neoTotal = neoReq * p;
     const neoRate = neoTotal / 24;
 
     return {
-      holliTotal: Math.round(holliTotal),
-      holliRate: holliRate.toFixed(1),
-      deficitTotal: Math.round(deficitTotal),
-      rehidratacionTotal: Math.round(rehidratacionTotal),
-      rate8h: rate8h.toFixed(1),
-      rate16h: rate16h.toFixed(1),
-      neoReq,
-      neoTotal: Math.round(neoTotal),
-      neoRate: neoRate.toFixed(1)
+      holliTotal: Math.round(holliTotal), holliRate: holliRate.toFixed(1),
+      deficitTotal: Math.round(deficitTotal), rehidratacionTotal: Math.round(rehidratacionTotal),
+      rate8h: rate8h.toFixed(1), rate16h: rate16h.toFixed(1),
+      neoReq, neoTotal: Math.round(neoTotal), neoRate: neoRate.toFixed(1),
+      boloChoque: Math.round(p * 20)
     };
-  }, [peso, edadMeses, gradoDeshidratacion, diaVida]);
+  }, [peso, edadEnMeses, gradoDeshidratacion, diaVida]);
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] pb-28 md:pb-8 font-sans selection:bg-blue-100">
       {/* NAVBAR SUPERIOR */}
       <nav className="bg-gradient-to-r from-blue-600 to-cyan-500 p-4 sticky top-0 z-40 shadow-lg text-white flex justify-between items-center px-6">
-        <div className="flex items-center gap-2"><FlaskConicalIcon size={24}/> <span className="font-black text-xl tracking-tight">Pediatría PRO</span></div>
+        <div className="flex items-center gap-2"><FlaskConicalIcon size={24}/> <span className="font-black text-xl tracking-tight">Calculadora Médica</span></div>
         <div className="hidden md:flex gap-1.5 bg-black/10 p-1 rounded-xl overflow-x-auto">
-            {[{id: 'dosificacion', icon: <PillIcon size={14}/>, label: 'Fármacos'},
+            {[{id: 'guias', icon: <StethoscopeIcon size={14}/>, label: 'Guías Clínicas'},
+              {id: 'dosificacion', icon: <PillIcon size={14}/>, label: 'Fármacos'},
               {id: 'inmunizaciones', icon: <SyringeIcon size={14}/>, label: 'Vacunas'},
               {id: 'somatometria', icon: <LineChartIcon size={14}/>, label: 'Nutrición'},
               {id: 'liquidos', icon: <DropletIcon size={14}/>, label: 'Líquidos'},
@@ -590,7 +880,8 @@ function MainApp() {
 
       {/* NAVBAR INFERIOR MOBILE */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t flex p-1 z-50 shadow-[0_-10px_40px_rgba(0,0,0,0.05)] pb-[env(safe-area-inset-bottom,0.5rem)] overflow-x-auto no-scrollbar">
-        {[{id: 'dosificacion', icon: <PillIcon size={20}/>, label: 'Fármacos'},
+        {[{id: 'guias', icon: <StethoscopeIcon size={20}/>, label: 'Guías'},
+          {id: 'dosificacion', icon: <PillIcon size={20}/>, label: 'Fármacos'},
           {id: 'inmunizaciones', icon: <SyringeIcon size={20}/>, label: 'Vacunas'},
           {id: 'somatometria', icon: <LineChartIcon size={20}/>, label: 'Nutrición'},
           {id: 'liquidos', icon: <DropletIcon size={20}/>, label: 'Líquidos'},
@@ -625,6 +916,63 @@ function MainApp() {
         {/* PANEL PRINCIPAL DINÁMICO */}
         <div className="lg:col-span-8">
             
+            {/* GUÍAS CLÍNICAS (NUEVA PESTAÑA PRINCIPAL) */}
+            {vista === 'guias' && (
+                <div className="space-y-6 animate-in fade-in duration-500">
+                    <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
+                        {Object.keys(GUIAS_CLINICAS).map(g => (
+                            <button key={g} onClick={()=>setGuiaActiva(g)} className={`px-5 py-2.5 rounded-full text-[10px] font-black whitespace-nowrap transition-all ${guiaActiva===g?`bg-blue-600 text-white shadow-lg`:'bg-white text-slate-500 border border-slate-100 shadow-sm hover:bg-slate-50'}`}>
+                                {g}
+                            </button>
+                        ))}
+                    </div>
+
+                    <div className={`bg-white p-6 md:p-8 rounded-[2.5rem] shadow-xl border-t-8 border-blue-500`}>
+                        <div className="flex items-start gap-4 mb-6 pb-6 border-b border-slate-100">
+                            <div className={`bg-slate-50 p-3 rounded-2xl shrink-0`}>
+                                {GUIAS_CLINICAS[guiaActiva].icono}
+                            </div>
+                            <div>
+                                <h3 className="font-black text-2xl text-slate-800">{guiaActiva}</h3>
+                                <p className="text-sm text-slate-500 font-medium mt-1 leading-relaxed">{GUIAS_CLINICAS[guiaActiva].desc}</p>
+                                <div className="mt-3 flex items-center gap-2 text-xs font-bold text-slate-600 bg-slate-50 w-fit px-3 py-1.5 rounded-lg border border-slate-100">
+                                    <ClockIcon size={14} className={`text-slate-400`} /> 
+                                    Duración Recomendada: {GUIAS_CLINICAS[guiaActiva].duracion}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="space-y-6">
+                            {GUIAS_CLINICAS[guiaActiva].lineas.map((linea, idx) => {
+                                const dosisCalculada = getDosisParaGuia(linea.grupo, linea.med, linea.ruta);
+                                return (
+                                    <div key={idx} className="bg-slate-50 p-6 rounded-3xl border border-slate-200 relative overflow-hidden">
+                                        <div className="absolute top-0 left-0 w-1.5 h-full bg-slate-300"></div>
+                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">{linea.titulo}</span>
+                                        <h4 className="font-black text-lg text-slate-800 mt-1">{linea.med}</h4>
+                                        <p className="text-sm text-slate-600 font-medium mt-2">{linea.texto}</p>
+                                        
+                                        {peso && !isNaN(parseFloat(peso)) && dosisCalculada ? (
+                                            <div className="mt-4 bg-emerald-50 border border-emerald-200 p-4 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-2 shadow-sm">
+                                                <span className="text-emerald-800 text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5"><CheckCircleIcon size={14}/> Volumen Calculado ({peso} kg):</span>
+                                                <div className="text-emerald-700 font-black text-xl md:text-2xl tracking-tighter">
+                                                    {dosisCalculada} <span className="text-xs uppercase bg-emerald-200/50 px-2 py-1 rounded-md ml-2">{linea.frec}</span>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="mt-4 bg-white/50 border border-dashed border-slate-200 p-3 rounded-xl flex items-center gap-2">
+                                                <ScaleIcon size={14} className="text-slate-400"/>
+                                                <span className="text-[10px] font-black text-slate-400 uppercase">Ingresa el peso para cálculo automático</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* DOSIFICACIÓN */}
             {vista === 'dosificacion' && (
                 <div className="space-y-6 animate-in fade-in duration-500">
@@ -672,6 +1020,18 @@ function MainApp() {
                     <div className="bg-violet-50/50 p-8 rounded-[2rem] border border-violet-100 mt-8">
                          <h4 className="flex items-center gap-3 font-black text-violet-800 mb-4 uppercase text-[11px] tracking-[0.2em]"><BrainIcon className="text-violet-600" size={20} /> Hitos del Desarrollo</h4>
                          <p className="text-sm text-violet-900/80 font-medium leading-relaxed">{nutricion.expectativas}</p>
+                    </div>
+
+                    {/* CURVAS DE CRECIMIENTO OMS */}
+                    <div className="mt-8 pt-8 border-t border-slate-100">
+                        <h4 className="flex items-center gap-2 md:gap-3 font-black text-slate-800 mb-5 md:mb-6 uppercase text-[10px] md:text-xs tracking-[0.2em]">
+                            <LineChartIcon className="text-violet-600 md:w-5 md:h-5" size={18} /> Curvas de Crecimiento OMS
+                        </h4>
+                        <div className="grid md:grid-cols-3 gap-4 md:gap-6">
+                            <GrowthCurveChart metric="weight" sex={sexo} patientAge={edadEnMeses} patientValue={parseFloat(peso)} title="Peso para la Edad" />
+                            <GrowthCurveChart metric="height" sex={sexo} patientAge={edadEnMeses} patientValue={parseFloat(talla)} title="Talla para la Edad" />
+                            <GrowthCurveChart metric="bmi" sex={sexo} patientAge={edadEnMeses} patientValue={parseFloat(nutricion.imc)} title="IMC para la Edad" />
+                        </div>
                     </div>
                 </div>
             )}
@@ -758,7 +1118,7 @@ function MainApp() {
                                         <div className="p-3 bg-blue-50 rounded-xl"><b>Inyectable:</b> Cada 3 meses. Sin estrógenos. Puede causar amenorrea y aumento de peso.</div>
                                         <div className="p-3 bg-blue-50 rounded-xl"><b>DIU Hormonal:</b> 5 años. Sin estrógenos. Disminuye sangrado abundante. Posible EPI.</div>
                                         <div className="p-3 bg-emerald-50 rounded-xl"><b>Condón Masculino:</b> Único que previene ETS. Uso recomendado siempre combinado.</div>
-                                        <div className="p-3 bg-emerald-50 rounded-xl"><b>Parche:</b> Semanal x 3 semanas. Pierde eficacia en pacientes &gt;90kg.</div>
+                                        <div className="p-3 bg-emerald-50 rounded-xl"><b>Parche:</b> Semanal x 3 semanas. Pierde eficacia en pacientes mayores a 90kg.</div>
                                         <div className="p-3 bg-emerald-50 rounded-xl"><b>Implante Subdérmico:</b> Progestágeno. Alta eficacia (3 años). Irregularidad menstrual.</div>
                                     </div>
                                 </div>
@@ -771,8 +1131,8 @@ function MainApp() {
                                 <div className="bg-rose-50 p-6 rounded-3xl border border-rose-100">
                                     <h4 className="font-black text-rose-700 uppercase text-xs mb-4"><AlertTriangleIcon size={16} className="inline mr-1"/> Criterios de Hospitalización (TCA)</h4>
                                     <div className="grid md:grid-cols-2 gap-6 text-xs text-rose-900/80 font-medium">
-                                        <ul className="list-disc pl-4 space-y-2"><li>Peso &lt;75% sobre el peso ideal para la edad.</li><li>Pérdida aguda de peso o rechazo total a alimentarse.</li><li>Hipotermia o Bradicardia (&lt;50 lpm).</li><li>Cambios ortostáticos (PA sistólica &lt;90 mmHg).</li></ul>
-                                        <ul className="list-disc pl-4 space-y-2"><li>Desequilibrio electrolítico (K &lt;3.2, Cl &lt;88).</li><li>Arritmias cardiacas o QTc alargado.</li><li>Ideación, intento o plan suicida.</li><li>Vómito intratable / Hematemesis.</li></ul>
+                                        <ul className="list-disc pl-4 space-y-2"><li>Peso menor a 75% sobre el peso ideal para la edad.</li><li>Pérdida aguda de peso o rechazo total a alimentarse.</li><li>Hipotermia o Bradicardia (menor a 50 lpm).</li><li>Cambios ortostáticos (PA sistólica menor a 90 mmHg).</li></ul>
+                                        <ul className="list-disc pl-4 space-y-2"><li>Desequilibrio electrolítico (K menor a 3.2, Cl menor a 88).</li><li>Arritmias cardiacas o QTc alargado.</li><li>Ideación, intento o plan suicida.</li><li>Vómito intratable / Hematemesis.</li></ul>
                                     </div>
                                 </div>
                                 <div className="bg-slate-50 p-6 rounded-3xl border border-slate-200">
@@ -813,7 +1173,7 @@ function MainApp() {
                                 </div>
                                 <div className="bg-sky-50 p-5 rounded-2xl border border-sky-100">
                                     <h4 className="font-black text-sky-700 uppercase text-[10px] mb-2 tracking-widest flex items-center gap-2"><ShieldAlertIcon size={14}/> Prevención de Hiponatremia Iatrogénica</h4>
-                                    <p className="text-xs text-sky-900/80 leading-relaxed font-medium">De acuerdo a las guías clínicas actuales, <b>se desaconseja el uso rutinario de soluciones hipotónicas</b> (ej. Sol. Salina al 0.45% o menos). Para el mantenimiento hídrico es preferible utilizar <b>Cristaloides Isotónicos Balanceados</b> (ej. Sterofundin, PlasmaLyte, Ringer Lactato) o Solución Salina 0.9% para prevenir el riesgo de encefalopatía hiponatrémica en niños hospitalizados.</p>
+                                    <p className="text-xs text-sky-900/80 leading-relaxed font-medium">De acuerdo a las guías clínicas actuales <b>(GPC / AAP)</b>, <b>se desaconseja el uso rutinario de soluciones hipotónicas</b> (ej. Sol. Salina al 0.45% o menos). Para el mantenimiento hídrico es preferible utilizar <b>Cristaloides Isotónicos Balanceados</b> (ej. Sterofundin, PlasmaLyte, Ringer Lactato) o Solución Salina 0.9% con aporte de KCl (20 mEq/L) para prevenir el riesgo de encefalopatía hiponatrémica en niños hospitalizados.</p>
                                 </div>
                             </div>
                         )}
@@ -821,9 +1181,17 @@ function MainApp() {
                         {subVistaLiquidos === 'deficit' && liquidos && (
                             <div className="space-y-6 animate-in fade-in">
                                 <div className="flex flex-col md:flex-row justify-between md:items-end border-b pb-4 gap-4">
-                                    <div><h3 className="font-black text-2xl text-slate-800 tracking-tight flex items-center gap-2"><ActivityIcon className="text-amber-500" size={28}/> Corrección de Deshidratación</h3><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-2">Déficit Hídrico + Mantenimiento</p></div>
-                                    <div className="w-full md:w-64"><label className="text-[10px] font-black text-slate-400 uppercase ml-2">Grado Clínica (OMS)</label><select value={gradoDeshidratacion} onChange={e=>setGradoDeshidratacion(e.target.value)} className="w-full p-3 bg-slate-50 rounded-xl font-bold text-amber-600 border-none outline-none ring-2 ring-transparent focus:ring-amber-500 mt-1 cursor-pointer"><option value="leve">Leve (Mucosa semihúmeda)</option><option value="moderada">Moderada (Mucosa seca/Letargo)</option><option value="severa">Severa (Pliegue/Shock)</option></select></div>
+                                    <div><h3 className="font-black text-2xl text-slate-800 tracking-tight flex items-center gap-2"><ActivityIcon className="text-amber-500" size={28}/> Corrección de Deshidratación</h3><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-2">Déficit Hídrico + Mantenimiento (Esquema 24h)</p></div>
+                                    <div className="w-full md:w-64"><label className="text-[10px] font-black text-slate-400 uppercase ml-2">Grado Clínica (OMS/GPC)</label><select value={gradoDeshidratacion} onChange={e=>setGradoDeshidratacion(e.target.value)} className="w-full p-3 bg-slate-50 rounded-xl font-bold text-amber-600 border-none outline-none ring-2 ring-transparent focus:ring-amber-500 mt-1 cursor-pointer"><option value="leve">Leve (Mucosa semihúmeda)</option><option value="moderada">Moderada (Mucosa seca/Letargo)</option><option value="severa">Severa (Pliegue/Shock)</option></select></div>
                                 </div>
+
+                                {gradoDeshidratacion === 'severa' && (
+                                    <div className="bg-rose-50 p-5 rounded-2xl border border-rose-200 shadow-sm animate-in fade-in">
+                                        <h4 className="font-black text-rose-700 uppercase text-[10px] mb-1 tracking-widest flex items-center gap-2"><AlertTriangleIcon size={16}/> Alerta GPC - Plan C (Choque Hipovolémico)</h4>
+                                        <p className="text-xs text-rose-900/80 font-medium">Previo al inicio del esquema de restitución de 24 horas, se debe estabilizar hemodinámicamente al paciente. Administrar <b>Cargas rápidas de Cristaloide Isotónico (Sol. Salina 0.9% o Hartmann) a 20 ml/kg = <span className="font-black text-rose-600 text-sm">{liquidos.boloChoque} ml</span></b> para pasar en 20-30 minutos. Revaluar y repetir hasta 3 veces si persiste el choque.</p>
+                                    </div>
+                                )}
+
                                 <div className="grid md:grid-cols-3 gap-4">
                                     <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100 text-center"><span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Mantenimiento</span><div className="text-2xl font-black text-slate-800">{liquidos.holliTotal} ml</div></div>
                                     <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100 text-center"><span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Déficit Clínico</span><div className="text-2xl font-black text-amber-600">+{liquidos.deficitTotal} ml</div></div>
@@ -835,7 +1203,7 @@ function MainApp() {
                                         <div className="bg-white p-4 rounded-xl shadow-sm text-center"><span className="block text-[10px] font-bold text-slate-500 uppercase">Primeras 8 Horas (50%)</span><div className="text-3xl font-black text-amber-600 my-1">{liquidos.rate8h}</div><span className="text-[10px] font-black text-slate-400 uppercase">ml/hora</span></div>
                                         <div className="bg-white p-4 rounded-xl shadow-sm text-center"><span className="block text-[10px] font-bold text-slate-500 uppercase">Siguientes 16 Horas (50%)</span><div className="text-3xl font-black text-amber-600 my-1">{liquidos.rate16h}</div><span className="text-[10px] font-black text-slate-400 uppercase">ml/hora</span></div>
                                     </div>
-                                    <p className="text-[10px] text-amber-800/80 font-medium text-center mt-4">* Si el paciente se encuentra en shock (Deshidratación Severa), iniciar con <b>Bolos de Cristaloides Isotónicos de 10 a 20 ml/kg</b> en 30-60 minutos previo a esta corrección, vigilando datos de sobrecarga.</p>
+                                    <p className="text-[10px] text-amber-800/80 font-medium text-center mt-4">* Si el paciente se encuentra en shock (Deshidratación Severa), iniciar con los bolos de rescate mencionados arriba previo a esta corrección, vigilando datos de sobrecarga.</p>
                                 </div>
                             </div>
                         )}
@@ -862,11 +1230,11 @@ function MainApp() {
                                 </div>
 
                                 <div className="bg-indigo-50 p-5 rounded-2xl border border-indigo-100 text-xs text-indigo-900/80 font-medium leading-relaxed">
-                                    <h4 className="font-black text-indigo-700 uppercase text-[10px] mb-2 tracking-widest flex items-center gap-2"><InfoIcon size={14}/> Consideraciones del Recién Nacido</h4>
+                                    <h4 className="font-black text-indigo-700 uppercase text-[10px] mb-2 tracking-widest flex items-center gap-2"><InfoIcon size={14}/> Consideraciones GPC IMSS (Catálogo: IMSS-548-12)</h4>
                                     <ul className="list-disc pl-5 space-y-1">
-                                        <li>El requerimiento se cruza automáticamente tomando el <b>Peso al Nacer</b> ingresado ({peso} kg) en la tabla oficial.</li>
-                                        <li>En prematuros menores de 1500g bajo fototerapia, considerar aumentar líquidos de 10 a 20 ml/kg/día por pérdidas insensibles.</li>
-                                        <li>El primer día de vida no se adicionan electrolitos en las infusiones, administrando preferentemente Solución Glucosada.</li>
+                                        <li>El requerimiento se cruza automáticamente tomando el <b>Peso al Nacer</b> ingresado ({peso} kg) en el Cuadro 6 de la GPC.</li>
+                                        <li>En prematuros extremos bajo calor radiante o fototerapia, las pérdidas insensibles aumentan hasta un 50-100%. Aumentar volumen según balance.</li>
+                                        <li><b>Aporte de Electrolitos:</b> El primer día de vida no se adicionan. Iniciar Sodio (2-3 mEq/kg/día) y Potasio (1-2 mEq/kg/día) a partir de las 48-72 hrs de vida o al establecerse diuresis adecuada.</li>
                                     </ul>
                                 </div>
                             </div>
@@ -884,14 +1252,15 @@ function MainApp() {
                                             onClick={() => {
                                                 let textoNota = "";
                                                 if (subVistaLiquidos === 'mantenimiento') {
-                                                    textoNota = `INDICACIONES DE FLUIDOTERAPIA (MANTENIMIENTO):\n• Solución: Cristaloide Isotónico Balanceado (ej. Ringer Lactato, Sterofundin) o Solución Salina 0.9%.\n• Volumen Total en 24 horas: ${liquidos.holliTotal} ml.\n• Velocidad de infusión: Pasar a ${liquidos.holliRate} ml/h en bomba de infusión continua.`;
+                                                    textoNota = `INDICACIONES DE FLUIDOTERAPIA (MANTENIMIENTO):\n• Solución: Cloruro de Sodio 0.9% + KCl (20 mEq/L) o Cristaloide Isotónico Balanceado.\n• Volumen Total en 24 horas: ${liquidos.holliTotal} ml.\n• Velocidad de infusión: Pasar a ${liquidos.holliRate} ml/h en bomba de infusión continua.`;
                                                 } else if (subVistaLiquidos === 'deficit') {
-                                                    textoNota = `INDICACIONES DE FLUIDOTERAPIA (CORRECCIÓN DE DÉFICIT):\n• Solución: Cristaloide Isotónico Balanceado o Solución Salina 0.9%.\n• Volumen Total 24h: ${liquidos.rehidratacionTotal} ml (Mantenimiento: ${liquidos.holliTotal} ml + Déficit Hídrico: ${liquidos.deficitTotal} ml).\n• ESQUEMA DE REPOSICIÓN:\n  - 1ras 8 horas (50%): Pasar ${Math.round(liquidos.rehidratacionTotal / 2)} ml a ${liquidos.rate8h} ml/h.\n  - Siguientes 16 horas (50%): Pasar ${Math.round(liquidos.rehidratacionTotal / 2)} ml a ${liquidos.rate16h} ml/h.`;
+                                                    const textBolos = gradoDeshidratacion === 'severa' ? `• PLAN C (RESCATE INICIAL): Pasar Bolo de Solución Fisiológica a 20 ml/kg (${liquidos.boloChoque} ml) IV para 20 minutos. Revaluar.\n` : "";
+                                                    textoNota = `INDICACIONES DE FLUIDOTERAPIA (CORRECCIÓN DE DÉFICIT):\n${textBolos}• Solución de mantenimiento: Cristaloide Isotónico Balanceado o Solución Salina 0.9%.\n• Volumen Total 24h: ${liquidos.rehidratacionTotal} ml (Mantenimiento: ${liquidos.holliTotal} ml + Déficit Hídrico: ${liquidos.deficitTotal} ml).\n• ESQUEMA DE REPOSICIÓN:\n  - 1ras 8 horas (50%): Pasar ${Math.round(liquidos.rehidratacionTotal / 2)} ml a ${liquidos.rate8h} ml/h.\n  - Siguientes 16 horas (50%): Pasar ${Math.round(liquidos.rehidratacionTotal / 2)} ml a ${liquidos.rate16h} ml/h.`;
                                                 } else if (subVistaLiquidos === 'neonatos') {
                                                     const pesoNum = parseFloat(peso);
                                                     const tipoDx = pesoNum < 1.0 ? 'al 5%' : pesoNum <= 1.5 ? 'al 7.5% - 10%' : 'al 10%';
-                                                    const notaElectrolitos = diaVida === 1 ? 'Sin añadir electrolitos (Día 1 de vida).' : 'Añadir electrolitos según requerimiento y balance sérico diario.';
-                                                    textoNota = `INDICACIONES DE FLUIDOTERAPIA (NEONATAL DÍA ${diaVida}):\n• Requerimiento: ${liquidos.neoReq} ml/kg/día.\n• Volumen Total en 24 horas: ${liquidos.neoTotal} ml.\n• Solución Base: Solución Glucosada ${tipoDx}.\n• Electrolitos: ${notaElectrolitos}\n• Velocidad de infusión: Pasar a ${liquidos.neoRate} ml/h en bomba de infusión continua.`;
+                                                    const notaElectrolitos = diaVida === 1 ? 'Sin añadir electrolitos (Día 1 de vida).' : 'Añadir Na+ (2-3 mEq/kg) y K+ (1-2 mEq/kg).';
+                                                    textoNota = `INDICACIONES DE FLUIDOTERAPIA (NEONATAL DÍA ${diaVida}):\n• Requerimiento (GPC IMSS): ${liquidos.neoReq} ml/kg/día.\n• Volumen Total en 24 horas: ${liquidos.neoTotal} ml.\n• Solución Base: Solución Glucosada ${tipoDx}.\n• Electrolitos: ${notaElectrolitos}\n• Velocidad de infusión: Pasar a ${liquidos.neoRate} ml/h en bomba de infusión continua.`;
                                                 }
                                                 copiarNota(textoNota);
                                             }} 
@@ -903,9 +1272,9 @@ function MainApp() {
                                     
                                     <div className="bg-slate-900/50 p-5 rounded-2xl border border-slate-700/50 shadow-inner">
                                         <pre className="font-mono text-[11px] md:text-xs whitespace-pre-wrap leading-relaxed text-blue-100">
-                                            {subVistaLiquidos === 'mantenimiento' && `INDICACIONES DE FLUIDOTERAPIA (MANTENIMIENTO):\n• Solución: Cristaloide Isotónico Balanceado (ej. Ringer Lactato, Sterofundin) o Solución Salina 0.9%.\n• Volumen Total en 24 horas: ${liquidos.holliTotal} ml.\n• Velocidad de infusión: Pasar a ${liquidos.holliRate} ml/h en bomba de infusión continua.`}
-                                            {subVistaLiquidos === 'deficit' && `INDICACIONES DE FLUIDOTERAPIA (CORRECCIÓN DE DÉFICIT):\n• Solución: Cristaloide Isotónico Balanceado o Solución Salina 0.9%.\n• Volumen Total 24h: ${liquidos.rehidratacionTotal} ml (Mantenimiento: ${liquidos.holliTotal} ml + Déficit Hídrico: ${liquidos.deficitTotal} ml).\n• ESQUEMA DE REPOSICIÓN:\n  - 1ras 8 horas (50%): Pasar ${Math.round(liquidos.rehidratacionTotal / 2)} ml a ${liquidos.rate8h} ml/h.\n  - Siguientes 16 horas (50%): Pasar ${Math.round(liquidos.rehidratacionTotal / 2)} ml a ${liquidos.rate16h} ml/h.`}
-                                            {subVistaLiquidos === 'neonatos' && `INDICACIONES DE FLUIDOTERAPIA (NEONATAL DÍA ${diaVida}):\n• Requerimiento: ${liquidos.neoReq} ml/kg/día.\n• Volumen Total en 24 horas: ${liquidos.neoTotal} ml.\n• Solución Base: Solución Glucosada ${parseFloat(peso) < 1.0 ? 'al 5%' : parseFloat(peso) <= 1.5 ? 'al 7.5% - 10%' : 'al 10%'}.\n• Electrolitos: ${diaVida === 1 ? 'Sin añadir electrolitos (Día 1 de vida).' : 'Añadir electrolitos según requerimiento y balance sérico diario.'}\n• Velocidad de infusión: Pasar a ${liquidos.neoRate} ml/h en bomba de infusión continua.`}
+                                            {subVistaLiquidos === 'mantenimiento' && `INDICACIONES DE FLUIDOTERAPIA (MANTENIMIENTO):\n• Solución: Cloruro de Sodio 0.9% + KCl (20 mEq/L) o Cristaloide Isotónico Balanceado.\n• Volumen Total en 24 horas: ${liquidos.holliTotal} ml.\n• Velocidad de infusión: Pasar a ${liquidos.holliRate} ml/h en bomba de infusión continua.`}
+                                            {subVistaLiquidos === 'deficit' && `INDICACIONES DE FLUIDOTERAPIA (CORRECCIÓN DE DÉFICIT):\n${gradoDeshidratacion === 'severa' ? `• PLAN C (RESCATE INICIAL): Pasar Bolo de Solución Fisiológica a 20 ml/kg (${liquidos.boloChoque} ml) IV para 20 minutos. Revaluar.\n` : ""}• Solución de mantenimiento: Cristaloide Isotónico Balanceado o Solución Salina 0.9%.\n• Volumen Total 24h: ${liquidos.rehidratacionTotal} ml (Mantenimiento: ${liquidos.holliTotal} ml + Déficit Hídrico: ${liquidos.deficitTotal} ml).\n• ESQUEMA DE REPOSICIÓN:\n  - 1ras 8 horas (50%): Pasar ${Math.round(liquidos.rehidratacionTotal / 2)} ml a ${liquidos.rate8h} ml/h.\n  - Siguientes 16 horas (50%): Pasar ${Math.round(liquidos.rehidratacionTotal / 2)} ml a ${liquidos.rate16h} ml/h.`}
+                                            {subVistaLiquidos === 'neonatos' && `INDICACIONES DE FLUIDOTERAPIA (NEONATAL DÍA ${diaVida}):\n• Requerimiento (GPC IMSS): ${liquidos.neoReq} ml/kg/día.\n• Volumen Total en 24 horas: ${liquidos.neoTotal} ml.\n• Solución Base: Solución Glucosada ${parseFloat(peso) < 1.0 ? 'al 5%' : parseFloat(peso) <= 1.5 ? 'al 7.5% - 10%' : 'al 10%'}.\n• Electrolitos: ${diaVida === 1 ? 'Sin añadir electrolitos (Día 1 de vida).' : 'Añadir Na+ (2-3 mEq/kg) y K+ (1-2 mEq/kg).'}\n• Velocidad de infusión: Pasar a ${liquidos.neoRate} ml/h en bomba de infusión continua.`}
                                         </pre>
                                     </div>
                                 </div>
