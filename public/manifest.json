@@ -1,0 +1,15 @@
+{
+  "name": "Calculadora Pediátrica PRO",
+  "short_name": "Pediatría PRO",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F8FAFC",
+  "theme_color": "#2563eb",
+  "icons": [
+    {
+      "src": "[https://cdn-icons-png.flaticon.com/512/3209/3209074.png](https://cdn-icons-png.flaticon.com/512/3209/3209074.png)",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
